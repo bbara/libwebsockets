@@ -12,12 +12,15 @@ lws_c_args = []
 
 
 # ToDo: detect platform properly
+cc = meson.get_compiler('c')
 esp_platform = false
 ios = false
 apple = false
 mingw = false
-win32 = build_machine.system() == 'win32'
-unix  = build_machine.system() == 'linux'
+win32_code = '#ifndef _WIN32\n#error not win\n#endif'
+win32 = cc.compiles(win32_code, name : 'win32 check')
+unix_code = '#ifndef linux\n#error not linux\n#endif'
+unix = cc.compiles(unix_code, name: 'linux check')
 
 # Initialize
 lws_max_smp = ''
@@ -631,6 +634,9 @@ endif
 if lws_with_ssl or lws_with_mbedtls
     lws_openssl_support = true
     lws_with_tls = true
+else
+    lws_openssl_support = false
+    lws_with_tls = false
 endif
 
 if lws_without_daemonize or win32
@@ -750,6 +756,8 @@ if lws_with_zlib and not lws_with_bundled_zlib
     else
         lws_have_zlib_h = c_compiler.has_header('zlib.h')
     endif
+else
+    lws_have_zlib_h = false
 endif
 
 # TODO: These can also be tested to see whether they actually work...
@@ -814,6 +822,13 @@ if (lws_with_ssl and not lws_with_mbedtls)
     lws_have_bn_bn2binpad = c_compiler.has_function(varia + 'BN_bn2binpad', dependencies: [openssl_dep])
     lws_have_evp_aes_128_wrap = c_compiler.has_function(varia + 'EVP_aes_128_wrap', dependencies: [openssl_dep])
     lws_have_ec_point_get_affine_coordinates = c_compiler.has_function(varia + 'EC_POINT_get_affine_coordinates', dependencies: [openssl_dep])
+else
+    lws_have_ssl_extra_chain_certs = false
+    lws_have_evp_md_ctx_free = false
+    lws_have_ecdsa_sig_set0 = false
+    lws_have_bn_bn2binpad = false
+    lws_have_evp_aes_128_wrap = false
+    lws_have_ec_point_get_affine_coordinates = false
 endif
 if lws_with_mbedtls
 	lws_have_tls_client_method = true
@@ -1594,17 +1609,18 @@ lws_config_h = configure_file(input: 'cmake/lws_config.h.in',
     output: 'lws_config.h',
     configuration: lws_config_data,
     format: 'cmake')
+config_inc = include_directories('.')
 lws_sources += [lws_config_h]
 
 libwebsockets = library('websockets',
     lws_sources,
     version: meson.project_version(),
     soversion: lws_library_version_number,
-    include_directories: lws_includes,
+    include_directories: [lws_includes, config_inc],
     c_args: lws_c_args,
     dependencies: lws_dependencies)
 
 libwebsockets_dep = declare_dependency(
-    include_directories: lws_includes,
+    include_directories: [lws_includes, config_inc],
     link_with: libwebsockets,
     dependencies: lws_dependencies)
